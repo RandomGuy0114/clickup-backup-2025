@@ -56,76 +56,86 @@ class ClickUpSaveTasksAndSubTasks extends Command
 
         $getFileTasksSubtasksIdTxt = Storage::get($taskFilePath);
         $ids = array_filter(array_map('trim', preg_split("/\r\n|\n|\r/", $getFileTasksSubtasksIdTxt)));
+       
+        $batchSize = 3;
+        while (! empty($ids)) {
+            $currentBatch = array_slice($ids, 0, $batchSize); // kunin yung first 10
 
-        // Getting tasks and subtasks details and saving as separate JSON files
-        foreach ($ids as $id) {
+            foreach ($currentBatch as $id) {
 
-            $taskSubtask = $clickUp->getTasksAndSubtasks($id);
-            $taskSubtaskFilePath = $tasksSubTasksFolderPath.'/'.$id.'.json';
-            Storage::put($taskSubtaskFilePath, json_encode($taskSubtask, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-            dump(now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s')." - Saved task/subtask JSON: {$id}");
-            Storage::append($logsFolderPath, now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s')." - Saved task/subtask JSON: {$id}");
+                $taskSubtask = $clickUp->getTasksAndSubtasks($id);
+                $taskSubtaskFilePath = $tasksSubTasksFolderPath.'/'.$id.'.json';
+                Storage::put($taskSubtaskFilePath, json_encode($taskSubtask, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                dump(now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s')." - Saved task/subtask JSON: {$id}");
+                Storage::append($logsFolderPath, now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s')." - Saved task/subtask JSON: {$id}");
 
-            // task/subtask attachments extraction and download
-            $attachments = $clickUp->extractAttachments($taskSubtask, 'task/subtask');
+                // task/subtask attachments extraction and download
+                $attachments = $clickUp->extractAttachments($taskSubtask, 'task/subtask');
 
-            if (! empty($attachments)) {
-                Storage::put($tasksSubTasksFolderPath."/attachments/{$id}.json", json_encode($attachments, JSON_PRETTY_PRINT));
-                $jsonPath = $tasksSubTasksFolderPath."/attachments/{$id}.json";
-                $downloadDir = $tasksSubTasksFolderPath.'/attachments/downloads';
-                $clickUp->downloadAttachments($jsonPath, $downloadDir, 'task/subtask');
+                if (! empty($attachments)) {
+                    Storage::put($tasksSubTasksFolderPath."/attachments/{$id}.json", json_encode($attachments, JSON_PRETTY_PRINT));
+                    $jsonPath = $tasksSubTasksFolderPath."/attachments/{$id}.json";
+                    $downloadDir = $tasksSubTasksFolderPath.'/attachments/downloads';
+                    $clickUp->downloadAttachments($jsonPath, $downloadDir, 'task/subtask');
 
-                continue;
-            }
-        }
-
-        dump(now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s').'✅ All tasks and subtasks have been saved as separate JSON files.');
-        Storage::append($logsFolderPath, now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s').' - All tasks and subtasks have been saved as separate JSON files.');
-
-        // Save the most recent 25 parent-comments for each task and subtask
-        foreach ($ids as $id) {
-
-            $comments = $clickUp->getTaskAndSubtaskComments($id);
-
-            if (! empty($comments)) {
-                $commentsFilePath = $tasksSubTasksFolderPath.'/comments/'.$id.'/comments_parent.json';
-                Storage::put($commentsFilePath, json_encode($comments, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-   
-                $commentParentIdTxt = $tasksSubTasksFolderPath.'/comments/'.$id.'/comment_replies/comments_parent_id.txt';
-
-                foreach ($comments as $comment) {
-                    Storage::append($commentParentIdTxt, $comment['id']);
+                    continue;
                 }
-            } else {
-                Storage::append($logsFolderPath, now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s')." -⚠️ No comments found for task {$id}");
             }
 
-            Storage::append($logsFolderPath, now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s')." - comment/s saved for task {$id}");
+            dump(now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s').'✅ Batch tasks and subtasks have been saved as separate JSON files.');
+            Storage::append($logsFolderPath, now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s').' - Batch tasks and subtasks have been saved as separate JSON files.');
 
-        }
+            // Save the most recent 25 parent-comments for each task and subtask
+            foreach ($currentBatch as $id) {
 
-        foreach ($ids as $id) {
+                $comments = $clickUp->getTaskAndSubtaskComments($id);
 
-            $commentParentIdTxt = $tasksSubTasksFolderPath.'/comments/'.$id.'/comment_replies/comments_parent_id.txt';
-            $getFileCommentParentIdTxt = Storage::get($commentParentIdTxt);
-            $commentParentIds = array_filter(array_map('trim', preg_split("/\r\n|\n|\r/", $getFileCommentParentIdTxt)));
+                if (! empty($comments)) {
+                    $commentsFilePath = $tasksSubTasksFolderPath.'/comments/'.$id.'/comments_parent.json';
+                    Storage::put($commentsFilePath, json_encode($comments, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
-            foreach ($commentParentIds as $parentId) {
+                    $commentParentIdTxt = $tasksSubTasksFolderPath.'/comments/'.$id.'/comment_replies/comments_parent_id.txt';
 
-                $commentReplies = $clickUp->getTaskAndSubtaskReplyComments($parentId);
-                if (! empty($commentReplies)) {
-                    $commentRepliesFilePath = $tasksSubTasksFolderPath.'/comments/'.$id.'/comment_replies/'.$parentId.'.json';
-                    Storage::put($commentRepliesFilePath, json_encode($commentReplies, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-                    dump(now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s')." - Saved task/subtask comment replies JSON: {$id} - parent comment ID: {$parentId}");
-                    Storage::append($logsFolderPath, now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s')." - Saved comment replies - parent comment ID: {$parentId}");
-
+                    foreach ($comments as $comment) {
+                        Storage::append($commentParentIdTxt, $comment['id']);
+                    }
                 } else {
-                    Storage::append($logsFolderPath, now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s')." - ⚠️ No reply comments found for comment {$parentId}");
-                    Storage::deleteDirectory($tasksSubTasksFolderPath.'/comments/'.$id.'/comment_replies/');
+                    Storage::append($logsFolderPath, now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s')." -⚠️ No comments found for task {$id}");
                 }
 
+                Storage::append($logsFolderPath, now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s')." - comment/s saved for task {$id}");
+
             }
-            Storage::delete($commentParentIdTxt);
+
+            foreach ($currentBatch as $id) {
+
+                $commentParentIdTxt = $tasksSubTasksFolderPath.'/comments/'.$id.'/comment_replies/comments_parent_id.txt';
+                $getFileCommentParentIdTxt = Storage::get($commentParentIdTxt);
+                $commentParentIds = array_filter(array_map('trim', preg_split("/\r\n|\n|\r/", $getFileCommentParentIdTxt)));
+
+                foreach ($commentParentIds as $parentId) {
+
+                    $commentReplies = $clickUp->getTaskAndSubtaskReplyComments($parentId);
+                    if (! empty($commentReplies)) {
+                        $commentRepliesFilePath = $tasksSubTasksFolderPath.'/comments/'.$id.'/comment_replies/'.$parentId.'.json';
+                        Storage::put($commentRepliesFilePath, json_encode($commentReplies, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                        dump(now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s')." - Saved task/subtask comment replies JSON: {$id} - parent comment ID: {$parentId}");
+                        Storage::append($logsFolderPath, now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s')." - Saved comment replies - parent comment ID: {$parentId}");
+
+                    } else {
+                        Storage::append($logsFolderPath, now()->setTimezone('Asia/Manila')->format('Y-m-d H:i:s')." - ⚠️ No reply comments found for comment {$parentId}");
+                        Storage::deleteDirectory($tasksSubTasksFolderPath.'/comments/'.$id.'/comment_replies/');
+                    }
+
+                }
+                Storage::delete($commentParentIdTxt);
+            }
+            // Remove processed IDs
+            $ids = array_slice($ids, $batchSize);
+
+            // Save remaining IDs back to file 
+            Storage::put($taskFilePath, implode(PHP_EOL, $ids));
+
         }
 
     }
